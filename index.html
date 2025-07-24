@@ -1,87 +1,58 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Armada Lunch Ticket Scanner</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8" />
+  <title>Armada Lunch Ticket Scanner</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    :root { --ok: #d2ffd2; --no: #ffd2d2; }
+    :root { --ok:#d2ffd2; --no:#ffd2d2; }
     body {
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin: 0;
-      padding: 1rem;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin:0; padding:1rem; text-align:center;
     }
-    #reader {
-      width: 320px;
-      max-width: 90vw;
-      margin-top: 1rem;
-    }
-    #status {
-      margin-top: 1rem;
-      font-size: 1.1rem;
-      text-align: center;
-      min-height: 2.5em;
-    }
-    #start {
-      padding: 0.8rem 1.6rem;
-      font-size: 1.1rem;
-      border-radius: 8px;
-      border: none;
-      background: #0077ff;
-      color: #fff;
-      cursor: pointer;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-    }
-    #start:active { transform: scale(0.97); }
+    #reader { margin:auto; margin-top:1rem; width:320px; max-width:90vw; }
+    #status { margin-top:1rem; font-size:1.1rem; }
+    #start-btn { padding:1rem 2rem; font-size:1.15rem; cursor:pointer; }
   </style>
 </head>
 <body>
   <h2>Scan lunch ticket</h2>
-
-  <button id="start">▶️ Start scanner</button>
-
+  <button id="start-btn">▶️ Start scanner</button>
   <div id="reader"></div>
   <div id="status"></div>
 
+  <!--
+    IMPORTANT: use the *ES‑module* build path so we get named exports.
+    The root of the package doesn’t expose Html5Qrcode.
+  -->
   <script type="module">
-    // Import the lightweight ES‑module build of html5‑qrcode (≈40 kB)
     import { Html5Qrcode } from "https://unpkg.com/html5-qrcode@2.3.8/esm/index.js";
 
-    const startBtn = document.getElementById("start");
-    const statusEl = document.getElementById("status");
+    const btn = document.getElementById("start-btn");
+    const status = document.getElementById("status");
 
-    startBtn.addEventListener("click", async () => {
-      startBtn.disabled = true;
-      statusEl.textContent = "Starting camera…";
-
+    btn.addEventListener("click", async () => {
       try {
         const qr = new Html5Qrcode("reader");
-
         await qr.start(
-          { facingMode: "environment" },           // Prefer back camera on phones
-          { fps: 10, qrbox: 250 },                  // 10 fps, draw 250 px guide box
-          async (txt /* decoded text */) => {
+          { facingMode: "environment" },
+          { fps: 10, qrbox: 250 },
+          async (text) => {
             try {
-              // txt already contains the full https://…exec?token=XYZ
-              const r = await fetch(txt, { mode: "cors" });
-              const html = await r.text();
-              statusEl.innerHTML = html;            // Script returns coloured <body>
-            } catch (err) {
-              statusEl.textContent = "Network error – try again";
-              statusEl.style.background = "var(--no)";
+              const resp = await fetch(text);
+              const html = await resp.text();
+              status.innerHTML = html;
+            } catch (e) {
+              status.textContent = "Network error";
             }
             await qr.pause();
-            setTimeout(() => qr.resume(), 1500);    // Resume after 1.5 s
+            setTimeout(() => qr.resume(), 1500);
           }
         );
-
-        startBtn.remove();                          // Hide button once running
-        statusEl.textContent = "Camera ready – point at QR";
+        btn.remove();
+        status.textContent = "Camera ready – point at QR";
       } catch (err) {
-        statusEl.textContent = "Could not access camera. Check permissions.";
+        status.textContent = "Camera initialisation failed: " + err;
       }
     });
   </script>
