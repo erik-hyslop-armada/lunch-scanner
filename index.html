@@ -2,47 +2,88 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Lunch check-in scanner</title>
+  <title>Armada Lunch Ticket Scanner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body{font-family:sans-serif;text-align:center;padding:1rem;}
-    #reader{margin:auto;margin-top:1rem;width:320px;max-width:90vw;}
-    #status{margin-top:1rem;font-size:1.2rem;}
+    :root { --ok: #d2ffd2; --no: #ffd2d2; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 0;
+      padding: 1rem;
+    }
+    #reader {
+      width: 320px;
+      max-width: 90vw;
+      margin-top: 1rem;
+    }
+    #status {
+      margin-top: 1rem;
+      font-size: 1.1rem;
+      text-align: center;
+      min-height: 2.5em;
+    }
+    #start {
+      padding: 0.8rem 1.6rem;
+      font-size: 1.1rem;
+      border-radius: 8px;
+      border: none;
+      background: #0077ff;
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    }
+    #start:active { transform: scale(0.97); }
   </style>
 </head>
-
 <body>
   <h2>Scan lunch ticket</h2>
+
+  <button id="start">▶️ Start scanner</button>
+
   <div id="reader"></div>
   <div id="status"></div>
 
   <script type="module">
-    // 1. Pull the latest ES-module build (≈40 kB) directly from UNPKG
-    import { Html5Qrcode } from "https://unpkg.com/html5-qrcode@2.3.8";             // :contentReference[oaicite:0]{index=0}
+    // Import the lightweight ES‑module build of html5‑qrcode (≈40 kB)
+    import { Html5Qrcode } from "https://unpkg.com/html5-qrcode@2.3.8";
 
-    // 2. Kick off the back camera after a user gesture (needed on iOS)
-    document.body.addEventListener('click', init, { once:true });
-    document.getElementById('status').textContent = 'Tap to start camera';
+    const startBtn = document.getElementById("start");
+    const statusEl = document.getElementById("status");
 
-    async function init () {
-      const qr = new Html5Qrcode("reader");
-      //   facingMode:"environment" → back camera on phones
-      //   fps:10 keeps CPU low; qrbox draws a 250 px guide square
-      await qr.start({ facingMode:"environment" }, { fps:10, qrbox:250 },
-        async text => {                   // text = full URL we encoded
-          try {
-            const r  = await fetch(text); // call the Apps-Script endpoint
-            const html = await r.text();  // endpoint already returns <body>
-            document.getElementById('status').innerHTML = html;
-          } catch (e) {
-            document.getElementById('status').textContent = 'Network error';
+    startBtn.addEventListener("click", async () => {
+      startBtn.disabled = true;
+      statusEl.textContent = "Starting camera…";
+
+      try {
+        const qr = new Html5Qrcode("reader");
+
+        await qr.start(
+          { facingMode: "environment" },           // Prefer back camera on phones
+          { fps: 10, qrbox: 250 },                  // 10 fps, draw 250 px guide box
+          async (txt /* decoded text */) => {
+            try {
+              // txt already contains the full https://…exec?token=XYZ
+              const r = await fetch(txt, { mode: "cors" });
+              const html = await r.text();
+              statusEl.innerHTML = html;            // Script returns coloured <body>
+            } catch (err) {
+              statusEl.textContent = "Network error – try again";
+              statusEl.style.background = "var(--no)";
+            }
+            await qr.pause();
+            setTimeout(() => qr.resume(), 1500);    // Resume after 1.5 s
           }
-          await qr.pause();               // freeze so staff can read
-          setTimeout(() => qr.resume(), 1500);  // auto-resume after 1.5 s
-        }
-      );
-      document.getElementById('status').textContent = 'Camera ready - point at QR';
-    }
+        );
+
+        startBtn.remove();                          // Hide button once running
+        statusEl.textContent = "Camera ready – point at QR";
+      } catch (err) {
+        statusEl.textContent = "Could not access camera. Check permissions.";
+      }
+    });
   </script>
 </body>
 </html>
