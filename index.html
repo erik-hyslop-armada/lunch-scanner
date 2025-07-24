@@ -73,9 +73,7 @@
           await qr.pause();
           setTimeout(() => qr.resume(), 1500);
         },
-        err => {
-          if (!/No MultiFormat Readers/i.test(err)) console.warn(err);
-        }
+        err => console.warn('QR error', err)    // onError (optional)
       ).then(() => {
         statusEl.textContent = 'Camera ready – point at QR';
       }).catch(err => {
