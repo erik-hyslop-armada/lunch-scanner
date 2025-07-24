@@ -21,39 +21,56 @@
 
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script>
-    const btn = document.getElementById('start');
+    const btn    = document.getElementById('start');
     const status = document.getElementById('status');
 
+    /**
+     * Helper to update both the text line and background tint
+     * ok === true  → green background
+     * ok === false → red  background
+     * ok === undefined → neutral grey
+     */
     function show(msg, ok){
       status.textContent = msg;
-      document.body.style.background = ok===undefined? '#f7f7f7' : (ok? 'var(--ok)' : 'var(--no)');
+      if (ok === true)      document.body.style.background = 'var(--ok)';
+      else if(ok === false) document.body.style.background = 'var(--no)';
+      else                  document.body.style.background = '#f7f7f7';
     }
 
     btn.addEventListener('click', () => {
-      btn.remove();
-      if(typeof Html5Qrcode==='undefined'){ show('Camera lib failed'); return; }
+      btn.remove();                         // capture user gesture
+      if(typeof Html5Qrcode === 'undefined'){ show('Camera lib failed'); return; }
+
       const qr = new Html5Qrcode('reader');
 
       // global JSONP callback so Apps‑Script can call us
       window.scanCb = ({ok,msg}) => {
-        show(msg, ok);
-        try{ qr.pause(); }catch(e){ /* ignore "not scanning" */ }
-        setTimeout(()=>qr.resume(),1500);
+        show(msg, ok);                      // show server result (green/red)
+        try {
+          qr.pause();                       // pause camera to prevent dupes
+          show('Camera paused');            // <— requested message
+        } catch(e) {/* ignore "not scanning" */}
+        setTimeout(() => {
+          qr.resume();
+          show('Camera ready – point at QR');
+        }, 1500);
       };
 
       qr.start(
-        {facingMode:'environment'},
-        {fps:10, qrbox:250},
+        { facingMode:'environment' },
+        { fps:10, qrbox:250 },
         raw => {
-          const fullUrl = decodeURIComponent(raw);    // QR data → URL
+          const fullUrl = decodeURIComponent(raw);      // QR data → URL
           const s = document.createElement('script');
           s.src = fullUrl + (fullUrl.includes('?')?'&':'?') + 'callback=scanCb';
           s.onerror = () => show('Network error', false);
           document.head.appendChild(s);
         },
-        err => { if(!/No MultiFormat Readers/i.test(err)) console.warn(err); }
-      ).then(()=>show('Camera ready – point at QR'))
-       .catch(e=>show('Camera init failed: '+e));
+        err => {
+          if(!/No MultiFormat Readers/i.test(err)) console.warn(err);
+        }
+      ).then(() => show('Camera ready – point at QR'))
+       .catch(e  => show('Camera init failed: ' + e));
     });
   </script>
 </body>
