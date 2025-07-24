@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Lunch check-in scanner</title>
+  <style>
+    body{font-family:sans-serif;text-align:center;padding:1rem;}
+    #reader{margin:auto;margin-top:1rem;width:320px;max-width:90vw;}
+    #status{margin-top:1rem;font-size:1.2rem;}
+  </style>
+</head>
+
+<body>
+  <h2>Scan lunch ticket</h2>
+  <div id="reader"></div>
+  <div id="status"></div>
+
+  <script type="module">
+    // 1. Pull the latest ES-module build (≈40 kB) directly from UNPKG
+    import { Html5Qrcode } from "https://unpkg.com/html5-qrcode@2.3.8";             // :contentReference[oaicite:0]{index=0}
+
+    // 2. Kick off the back camera after a user gesture (needed on iOS)
+    document.body.addEventListener('click', init, { once:true });
+    document.getElementById('status').textContent = 'Tap to start camera';
+
+    async function init () {
+      const qr = new Html5Qrcode("reader");
+      //   facingMode:"environment" → back camera on phones
+      //   fps:10 keeps CPU low; qrbox draws a 250 px guide square
+      await qr.start({ facingMode:"environment" }, { fps:10, qrbox:250 },
+        async text => {                   // text = full URL we encoded
+          try {
+            const r  = await fetch(text); // call the Apps-Script endpoint
+            const html = await r.text();  // endpoint already returns <body>
+            document.getElementById('status').innerHTML = html;
+          } catch (e) {
+            document.getElementById('status').textContent = 'Network error';
+          }
+          await qr.pause();               // freeze so staff can read
+          setTimeout(() => qr.resume(), 1500);  // auto-resume after 1.5 s
+        }
+      );
+      document.getElementById('status').textContent = 'Camera ready - point at QR';
+    }
+  </script>
+</body>
+</html>
