@@ -7,33 +7,13 @@
   <style>
     :root { --ok:#d2ffd2; --no:#ffd2d2; }
     body {
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      margin:0;
-      padding:1rem;
-      text-align:center;
-      background:#f7f7f7;
+      font-family: system-ui, -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+      margin:0; padding:1rem; text-align:center; background:#f7f7f7;
     }
-    #reader {
-      margin:auto;
-      margin-top:1rem;
-      width:320px;
-      max-width:90vw;
-    }
-    #status {
-      margin-top:1rem;
-      font-size:1.2rem;
-      min-height:2.2rem;
-    }
-    button {
-      padding:1rem 2rem;
-      font-size:1.1rem;
-      border:none;
-      border-radius:8px;
-      cursor:pointer;
-      background:#004080;
-      color:#fff;
-    }
-    button:active { transform:scale(0.97); }
+    #reader{margin:auto;margin-top:1rem;width:320px;max-width:90vw;}
+    #status{margin-top:1rem;font-size:1.2rem;min-height:2.2rem;}
+    button{padding:1rem 2rem;font-size:1.1rem;border:none;border-radius:8px;cursor:pointer;background:#004080;color:#fff;}
+    button:active{transform:scale(0.97);}
   </style>
 </head>
 <body>
@@ -44,16 +24,21 @@
 
   <!-- html5‑qrcode global build -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-
   <script>
     const startBtn = document.getElementById('start');
     const statusEl = document.getElementById('status');
 
+    // Paint helper
+    function showMsg(txt, ok){
+      statusEl.textContent = txt;
+      document.body.style.background = ok===undefined ? '#f7f7f7' : (ok? 'var(--ok)' : 'var(--no)');
+    }
+
     startBtn.addEventListener('click', () => {
-      startBtn.remove(); // user gesture captured
+      startBtn.remove(); // user gesture captured → can ask for camera
 
       if (typeof Html5Qrcode === 'undefined') {
-        statusEl.textContent = 'Failed to load camera library.';
+        showMsg('Failed to load camera library.');
         return;
       }
 
@@ -62,23 +47,23 @@
       qr.start(
         { facingMode: 'environment' },
         { fps: 10, qrbox: 250 },
-        async text => {          // onSuccess
+        async fullUrl => {  // onSuccess – full https://script.google.com/...&token=XYZ
           try {
-            const res = await fetch(text);
-            const html = await res.text();
-            statusEl.innerHTML = html;          // shows green/red page
-          } catch {
-            statusEl.textContent = 'Network error';
+            const res = await fetch(fullUrl, { mode: 'cors' });
+            const data = await res.json();              // expects { ok:boolean, msg:string }
+            showMsg(data.msg, data.ok);
+          } catch (e) {
+            showMsg('Network/CORS error');
+            console.warn(e);
           }
           await qr.pause();
           setTimeout(() => qr.resume(), 1500);
         },
-        err => console.warn('QR error', err)    // onError (optional)
-      ).then(() => {
-        statusEl.textContent = 'Camera ready – point at QR';
-      }).catch(err => {
-        statusEl.textContent = 'Camera initialisation failed: ' + err;
-      });
+        err => {
+          if (!/No MultiFormat Readers/i.test(err)) console.warn('QR error', err);
+        }
+      ).then(() => showMsg('Camera ready – point at QR'))
+       .catch(err => showMsg('Camera initialisation failed: '+ err));
     });
   </script>
 </body>
