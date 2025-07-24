@@ -2,61 +2,82 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Armada Lunch Ticket Scanner</title>
+  <title>Armada Lunch Ticket Scanner</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     :root { --ok:#d2ffd2; --no:#ffd2d2; }
     body {
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      margin:0; padding:1rem; text-align:center;
+      margin:0;
+      padding:1rem;
+      text-align:center;
+      background:#f7f7f7;
     }
-    #reader { margin:auto; margin-top:1rem; width:320px; max-width:90vw; }
-    #status { margin-top:1rem; font-size:1.2rem; }
-    button { padding:1rem 2rem; font-size:1.1rem; border:none; border-radius:8px; cursor:pointer; background:#333; color:#fff; }
+    #reader {
+      margin:auto;
+      margin-top:1rem;
+      width:320px;
+      max-width:90vw;
+    }
+    #status {
+      margin-top:1rem;
+      font-size:1.2rem;
+      min-height:2.2rem;
+    }
+    button {
+      padding:1rem 2rem;
+      font-size:1.1rem;
+      border:none;
+      border-radius:8px;
+      cursor:pointer;
+      background:#004080;
+      color:#fff;
+    }
     button:active { transform:scale(0.97); }
   </style>
 </head>
 <body>
   <h2>Scan lunch ticket</h2>
-  <button id="start">▶️ Start scanner</button>
+  <button id="start">▶️ Start scanner</button>
   <div id="reader"></div>
   <div id="status"></div>
 
-  <!-- html5‑qrcode UMD build attaches Html5Qrcode on window -->
+  <!-- html5‑qrcode global build -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
   <script>
-    const btn = document.getElementById("start");
-    const statusEl = document.getElementById("status");
+    const startBtn = document.getElementById('start');
+    const statusEl = document.getElementById('status');
 
-    btn.addEventListener("click", () => {
-      btn.remove(); // ensures user gesture before camera starts
+    startBtn.addEventListener('click', () => {
+      startBtn.remove(); // user gesture captured
 
-      if (typeof Html5Qrcode === "undefined") {
-        statusEl.textContent = "html5-qrcode library failed to load — check internet connectivity.";
+      if (typeof Html5Qrcode === 'undefined') {
+        statusEl.textContent = 'Failed to load camera library.';
         return;
       }
 
-      const qr = new Html5Qrcode("reader");
+      const qr = new Html5Qrcode('reader');
+
       qr.start(
-        { facingMode: "environment" },            // back camera
+        { facingMode: 'environment' },
         { fps: 10, qrbox: 250 },
-        async (text) => {                          // success callback
+        async text => {          // onSuccess
           try {
-            const r = await fetch(text);
-            const html = await r.text();
-            statusEl.innerHTML = html;             // green/red page from Apps Script
-          } catch (e) {
-            statusEl.textContent = "Network error";
+            const res = await fetch(text);
+            const html = await res.text();
+            statusEl.innerHTML = html;          // shows green/red page
+          } catch {
+            statusEl.textContent = 'Network error';
           }
-          await qr.pause();                        // freeze so staff can read
-          setTimeout(() => qr.resume(), 1500);     // resume after 1.5 s
+          await qr.pause();
+          setTimeout(() => qr.resume(), 1500);
         },
-        (err) => console.warn(err)                 // optional error prints
+        err => console.warn('QR error', err)    // onError (optional)
       ).then(() => {
-        statusEl.textContent = "Camera ready – point at QR";
-      }).catch((err) => {
-        statusEl.textContent = "Camera initialisation failed: " + err;
+        statusEl.textContent = 'Camera ready – point at QR';
+      }).catch(err => {
+        statusEl.textContent = 'Camera initialisation failed: ' + err;
       });
     });
   </script>
