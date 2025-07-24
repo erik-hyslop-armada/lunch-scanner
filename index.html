@@ -11,50 +11,43 @@
       margin:0; padding:1rem; text-align:center;
     }
     #reader { margin:auto; margin-top:1rem; width:320px; max-width:90vw; }
-    #status { margin-top:1rem; font-size:1.1rem; }
-    #start-btn { padding:1rem 2rem; font-size:1.15rem; cursor:pointer; }
+    #status { margin-top:1rem; font-size:1.2rem; }
+    button { padding:1rem 2rem; font-size:1.1rem; border:none; border-radius:8px; cursor:pointer; background:#333; color:#fff; }
+    button:active { transform:scale(0.97); }
   </style>
 </head>
 <body>
   <h2>Scan lunch ticket</h2>
-  <button id="start-btn">▶️ Start scanner</button>
+  <button id="start">▶️ Start scanner</button>
   <div id="reader"></div>
   <div id="status"></div>
 
-  <!--
-    IMPORTANT: use the *ES‑module* build path so we get named exports.
-    The root of the package doesn’t expose Html5Qrcode.
-  -->
-  <script type="module">
-    import { Html5Qrcode } from "https://unpkg.com/html5-qrcode@2.3.8/esm/index.js";
+  <!-- html5‑qrcode UMD build attaches Html5Qrcode on window -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
-    const btn = document.getElementById("start-btn");
-    const status = document.getElementById("status");
+  <script>
+    const btn = document.getElementById("start");
+    const statusEl = document.getElementById("status");
 
-    btn.addEventListener("click", async () => {
-      try {
-        const qr = new Html5Qrcode("reader");
-        await qr.start(
-          { facingMode: "environment" },
-          { fps: 10, qrbox: 250 },
-          async (text) => {
-            try {
-              const resp = await fetch(text);
-              const html = await resp.text();
-              status.innerHTML = html;
-            } catch (e) {
-              status.textContent = "Network error";
-            }
-            await qr.pause();
-            setTimeout(() => qr.resume(), 1500);
-          }
-        );
-        btn.remove();
-        status.textContent = "Camera ready – point at QR";
-      } catch (err) {
-        status.textContent = "Camera initialisation failed: " + err;
+    btn.addEventListener("click", () => {
+      btn.remove(); // ensures user gesture before camera starts
+
+      if (typeof Html5Qrcode === "undefined") {
+        statusEl.textContent = "html5-qrcode library failed to load — check internet connectivity.";
+        return;
       }
-    });
-  </script>
-</body>
-</html>
+
+      const qr = new Html5Qrcode("reader");
+      qr.start(
+        { facingMode: "environment" },            // back camera
+        { fps: 10, qrbox: 250 },
+        async (text) => {                          // success callback
+          try {
+            const r = await fetch(text);
+            const html = await r.text();
+            statusEl.innerHTML = html;             // green/red page from Apps Script
+          } catch (e) {
+            statusEl.textContent = "Network error";
+          }
+          await qr.pause();                        // freeze so staff can read
+          set
