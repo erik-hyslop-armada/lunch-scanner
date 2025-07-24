@@ -50,4 +50,15 @@
             statusEl.textContent = "Network error";
           }
           await qr.pause();                        // freeze so staff can read
-          set
+          setTimeout(() => qr.resume(), 1500);     // resume after 1.5 s
+        },
+        (err) => console.warn(err)                 // optional error prints
+      ).then(() => {
+        statusEl.textContent = "Camera ready – point at QR";
+      }).catch((err) => {
+        statusEl.textContent = "Camera initialisation failed: " + err;
+      });
+    });
+  </script>
+</body>
+</html>
