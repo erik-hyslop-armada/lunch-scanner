@@ -9,11 +9,12 @@
     body {
       font-family: system-ui, -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
       margin:0; padding:1rem; text-align:center; background:#f7f7f7;
+      transition: background .2s;
     }
     #reader{margin:auto;margin-top:1rem;width:320px;max-width:90vw;}
     #status{margin-top:1rem;font-size:1.2rem;min-height:2.2rem;}
     button{padding:1rem 2rem;font-size:1.1rem;border:none;border-radius:8px;cursor:pointer;background:#004080;color:#fff;}
-    button:active{transform:scale(0.97);}
+    button:active{transform:scale(0.97);}    
   </style>
 </head>
 <body>
@@ -28,10 +29,10 @@
     const startBtn = document.getElementById('start');
     const statusEl = document.getElementById('status');
 
-    // Paint helper
     function showMsg(txt, ok){
       statusEl.textContent = txt;
-      document.body.style.background = ok===undefined ? '#f7f7f7' : (ok? 'var(--ok)' : 'var(--no)');
+      if(ok===undefined) document.body.style.background='#f7f7f7';
+      else document.body.style.background = ok ? 'var(--ok)' : 'var(--no)';
     }
 
     startBtn.addEventListener('click', () => {
@@ -44,20 +45,21 @@
 
       const qr = new Html5Qrcode('reader');
 
+      // JSONP callback. Must be global.
+      window.scanCb = ({ok,msg}) => {
+        showMsg(msg, ok);
+        qr.pause().then(() => setTimeout(() => qr.resume(), 1500));
+      };
+
       qr.start(
         { facingMode: 'environment' },
         { fps: 10, qrbox: 250 },
-        async fullUrl => {  // onSuccess – full https://script.google.com/...&token=XYZ
-          try {
-            const res = await fetch(fullUrl, { mode: 'cors' });
-            const data = await res.json();              // expects { ok:boolean, msg:string }
-            showMsg(data.msg, data.ok);
-          } catch (e) {
-            showMsg('Network/CORS error');
-            console.warn(e);
-          }
-          await qr.pause();
-          setTimeout(() => qr.resume(), 1500);
+        fullUrl => {  // onSuccess – full https://script.google.com/...&token=XYZ
+          // inject <script> to bypass CORS via JSONP
+          const s = document.createElement('script');
+          s.src = fullUrl + '&callback=scanCb';
+          s.onerror = () => showMsg('Network error', false);
+          document.head.appendChild(s);
         },
         err => {
           if (!/No MultiFormat Readers/i.test(err)) console.warn('QR error', err);
