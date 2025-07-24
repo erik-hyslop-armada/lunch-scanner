@@ -1,71 +1,104 @@
-<script>
-  const btn    = document.getElementById('start');
-  const status = document.getElementById('status');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Armada Lunch Ticket Scanner</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root { --ok:#d2ffd2; --no:#ffd2d2; }
+    body{
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+      margin:0;padding:1rem;text-align:center;background:#f7f7f7;
+      transition:background .2s;
+    }
+    #reader{margin:auto;margin-top:1rem;width:320px;max-width:90vw}
+    #status{margin-top:1rem;font-size:1.2rem;min-height:2.2rem}
+    button{
+      padding:1rem 2rem;font-size:1.1rem;border:none;border-radius:8px;
+      cursor:pointer;background:#004080;color:#fff;
+    }
+    button:active{transform:scale(.97)}
+  </style>
+</head>
+<body>
+  <h2>Scan lunch ticket</h2>
+  <button id="start">▶️ Start scanner</button>
+  <div id="reader"></div>
+  <div id="status"></div>
 
-  function show(msg, ok){
-    status.textContent = msg;
-    if      (ok === true)  document.body.style.background = 'var(--ok)';
-    else if (ok === false) document.body.style.background = 'var(--no)';
-    else                   document.body.style.background = '#f7f7f7';
-  }
+  <!-- html5‑qrcode global build -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script>
+    const btn    = document.getElementById('start');
+    const status = document.getElementById('status');
 
-  btn.addEventListener('click', () => {
-    console.log('[UI] Start button clicked');
-    btn.remove();
-
-    if (typeof Html5Qrcode === 'undefined'){
-      show('Camera lib failed'); console.error('Html5Qrcode undefined'); return;
+    function show(msg, ok){
+      status.textContent = msg;
+      if (ok === true)      document.body.style.background = 'var(--ok)';
+      else if(ok === false) document.body.style.background = 'var(--no)';
+      else                  document.body.style.background = '#f7f7f7';
     }
 
-    const qr = new Html5Qrcode('reader');
-    console.log('[QR] Html5Qrcode created');
+    btn.addEventListener('click', () => {
+      console.log('[UI] Start button clicked');
+      btn.remove();
 
-    // JSONP callback from Apps Script
-    window.scanCb = ({ok,msg}) => {
-      console.log('[QR] scanCb received →', { ok, msg });
-      show(msg, ok);
-      setTimeout(() => {
-        console.log('[QR] Resuming camera');
-        qr.resume();
-        show('Camera ready – point at QR');
-      }, 1500);
-    };
-
-    qr.start(
-      { facingMode:'environment' },
-      { fps:10, qrbox:250 },
-      raw => {
-        console.log('[QR] onSuccess raw =', raw);
-        try {
-          qr.pause();                      // freeze immediately
-        } catch (err){
-          console.warn('[QR] pause error', err);
-        }
-        show('Camera paused – validating…');
-
-        const url = decodeURIComponent(raw);
-        console.log('[QR] decoded URL =', url);
-
-        const s   = document.createElement('script');
-        s.src     = url + (url.includes('?') ? '&' : '?') + 'callback=scanCb';
-        s.onerror = () => {
-          console.error('[QR] JSONP load failed');
-          show('Network error', false);
-        };
-        document.head.appendChild(s);
-      },
-      err => {
-        if (!/No MultiFormat Readers/i.test(err)){
-          console.warn('[QR] onError →', err);
-        }
+      if(typeof Html5Qrcode === 'undefined'){
+        show('Camera lib failed');
+        console.error('Html5Qrcode undefined');
+        return;
       }
-    ).then(() => {
+
+      const qr = new Html5Qrcode('reader');
+      console.log('[QR] Html5Qrcode instance created');
+
+      // JSONP callback from Apps Script
+      window.scanCb = ({ok,msg}) => {
+        console.log('[QR] scanCb received', {ok,msg});
+        show(msg, ok);
+        setTimeout(() => {
+          console.log('[QR] Resuming camera');
+          qr.resume();
+          show('Camera ready – point at QR');
+        }, 1500);
+      };
+
+      qr.start(
+        { facingMode:'environment' },
+        { fps:10, qrbox:250 },
+        raw => {
+          console.log('[QR] onSuccess raw', raw);
+          try {
+            qr.pause();
+            console.log('[QR] Camera paused');
+          } catch(err){
+            console.warn('[QR] pause error', err);
+          }
+          show('Camera paused – validating…');
+
+          const url = decodeURIComponent(raw);
+          console.log('[QR] decoded URL', url);
+
+          const s = document.createElement('script');
+          s.src = url + (url.includes('?') ? '&' : '?') + 'callback=scanCb';
+          s.onerror = () => {
+            console.error('[QR] JSONP load failed');
+            show('Network error', false);
+          };
+          document.head.appendChild(s);
+        },
+        err => {
+          if(!/No MultiFormat Readers/i.test(err)){
+            console.warn('[QR] onError', err);
+          }
+        }
+      ).then(() => {
         console.log('[QR] Camera started');
         show('Camera ready – point at QR');
-      })
-     .catch(e  => {
+      }).catch(e => {
         console.error('[QR] init failed', e);
         show('Camera init failed: ' + e, false);
-     });
-  });
-</script>
+      });
+    });
+  </script>
+</b
