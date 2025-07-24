@@ -46,10 +46,12 @@
       const qr = new Html5Qrcode('reader');
 
       // JSONP callback. Must be global.
-      window.scanCb = ({ok,msg}) => {
+      window.scanCb = ({ ok, msg }) => {
         showMsg(msg, ok);
-        qr.pause().then(() => setTimeout(() => qr.resume(), 1500));
+        qr.pause();                                 // ← just pause
+        setTimeout(() => qr.resume(), 1500);        // resume later
       };
+
 
       qr.start(
         { facingMode: 'environment' },
