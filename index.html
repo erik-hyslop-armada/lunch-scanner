@@ -1,10 +1,9 @@
 <!--
-  Armada QR‑scanner – v6
+  Armada QR‑scanner – v8  (silencer)
   ------------------------------------------------
-  • Pausar kameran direkt efter träff ➜ visar "Waiting for response…"
-  • Återupptar kameran 1,2 s efter server‑svar (eller på Resume‑knapp)
-  • setStatus() har nu tre lägen: success, error, waiting
-  • Färgkod: waiting = gul ring
+  • Stoppar html5‑qrcode från att spamma decode‑fel i konsolen
+  • Robust fetch: försöker .json(), fall‑back till .text() → JSON.parse
+  • Kortare återupptagnings‑delay (400 ms)
 -->
 <!DOCTYPE html>
 <html lang="sv" class="scroll-smooth">
@@ -55,8 +54,8 @@
 <audio id="beep" src="data:audio/webm;base64,GkXfo0AgQoaBAULj…" preload="auto"></audio>
 
 <script>
-    const WEBAPP_URL = "https://script.google.com/macros/s/XXXXXXXX/exec"; // BYT
-    const SCAN_COOLDOWN = 50; // ms tills kameran återstartas
+    const WEBAPP_URL     = "https://script.google.com/macros/s/XXXXXXXX/exec"; // BYT
+    const RESUME_DELAY   = 400;   // ms tills kameran återstartas
 
     const els = {
         setup:      document.getElementById('setup'),
@@ -72,64 +71,57 @@
     let qr;
 
     /* ---------- status helper ---------- */
-    function setStatus(type, msg) {
-        const c = els.statusCard.classList;
+    function setStatus(type,msg){
+        const c=els.statusCard.classList;
         c.remove('ring-2','ring-green-500','ring-red-500','ring-yellow-400');
         els.statusIcon.classList.remove('hidden');
-
-        if (type==='success') {
-            c.add('ring-2','ring-green-500');
-            els.statusIcon.innerHTML='<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />';
-            els.beep.currentTime=0; els.beep.play().catch(()=>{});
-        } else if (type==='error') {
-            c.add('ring-2','ring-red-500');
-            els.statusIcon.innerHTML='<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />';
-        } else { // waiting
-            c.add('ring-2','ring-yellow-400');
-            els.statusIcon.innerHTML='<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />';
-        }
-        els.statusTxt.textContent = msg;
+        if(type==='success'){c.add('ring-2','ring-green-500');els.statusIcon.innerHTML='<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />';els.beep.currentTime=0;els.beep.play().catch(()=>{});}
+        else if(type==='error'){c.add('ring-2','ring-red-500');els.statusIcon.innerHTML='<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />';}
+        else{c.add('ring-2','ring-yellow-400');els.statusIcon.innerHTML='<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />';}
+        els.statusTxt.textContent=msg;
     }
 
-    /* ---------- scanner init ---------- */
+    /* ---------- init scanner ---------- */
     function initScanner(){
         els.scannerSec.classList.remove('hidden');
-        qr = new Html5Qrcode('reader', { verbose:false });
+        qr=new Html5Qrcode('reader',{verbose:false});
         Html5Qrcode.getCameras().then(cams=>{
-            const camId = cams[0]?.id;
-            qr.start({ deviceId:{exact:camId}}, { fps:15, qrbox:300, disableFlip:true }, onScan)
-                .then(()=> setStatus('waiting','Kamera redo – rikta mot QR'))
-                .catch(e=> setStatus('error','Startfel: '+e));
-        });
+            const camId=cams[0]?.id;
+            const cfg={fps:15,qrbox:300,disableFlip:true};
+            qr.start({deviceId:{exact:camId}},cfg,onScan,()=>{/* swallow decode errors*/});
+        }).catch(e=>setStatus('error','Kamerafelkod: '+e));
     }
 
-    /* ---------- scan callback ---------- */
+    /* ---------- onScan ---------- */
     async function onScan(text){
-        // pausa kamera direkt så vi inte får flera triggers
         await qr.pause();
         setStatus('waiting','Waiting for response…');
 
         try{
-            const scannerName = encodeURIComponent(localStorage.getItem('scannerName')||'');
-            const url = new URL(text);
-            url.searchParams.set('scanner', scannerName);
-
-            const res  = await fetch(url, { mode:'cors', credentials:'omit' });
-            const data = await res.json();
-            setStatus(data.ok ? 'success':'error', data.msg || 'Ok');
+            const scannerName=encodeURIComponent(localStorage.getItem('scannerName')||'');
+            const url=new URL(text);
+            url.searchParams.set('scanner',scannerName);
+            const res=await fetch(url,{mode:'cors',credentials:'omit'});
+            let data;
+            if(res.headers.get('content-type')?.includes('application/json')){
+                data=await res.json();
+            }else{
+                const t=await res.text();
+                data=JSON.parse(t);
+            }
+            setStatus(data.ok?'success':'error',data.msg||'Ok');
         }catch(err){
             setStatus('error','Network/JSON‑fel');
         }
 
-        // återstarta kameran efter kort timeout
-        setTimeout(()=>qr.resume(), SCAN_COOLDOWN);
+        setTimeout(()=>qr.resume(),RESUME_DELAY);
     }
 
     /* ---------- UI events ---------- */
     els.saveBtn.addEventListener('click',()=>{
-        const name = els.nameInput.value.trim();
-        if(!name) return els.nameInput.focus();
-        localStorage.setItem('scannerName', name);
+        const name=els.nameInput.value.trim();
+        if(!name)return els.nameInput.focus();
+        localStorage.setItem('scannerName',name);
         els.setup.classList.add('hidden');
         initScanner();
     });
@@ -139,7 +131,7 @@
             els.setup.classList.add('hidden');
             initScanner();
         }
-        document.getElementById('year').textContent = new Date().getFullYear();
+        document.getElementById('year').textContent=new Date().getFullYear();
     });
 </script>
 </body>
