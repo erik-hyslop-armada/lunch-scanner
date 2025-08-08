@@ -1,176 +1,144 @@
 <!--
-  Armada QR‑scanner – v4
+  Armada QR‑scanner – v6
   ------------------------------------------------
-  Förbättringar av läsbarhet (mindre känslig för vinkel):
-  • Större video‑upplösning & högre fps (15) + experimentalFeatures
-  • qrbox ökas till 300×300 & disableFlip för mobilkameror
-  • Kamera‑overlay (transparant mask) som guidar användaren
-  • Automatisk kontinuerlig autofocus där det stöds
+  • Pausar kameran direkt efter träff ➜ visar "Waiting for response…"
+  • Återupptar kameran 1,2 s efter server‑svar (eller på Resume‑knapp)
+  • setStatus() har nu tre lägen: success, error, waiting
+  • Färgkod: waiting = gul ring
 -->
 <!DOCTYPE html>
 <html lang="sv" class="scroll-smooth">
 <head>
     <meta charset="utf-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Armada Lunch Ticket Scanner</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Armada Lunch Ticket Scanner</title>
 
-    <!-- Tailwind via CDN for rapid prototyping -->
+    <!-- Tailwind CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = { darkMode: 'media' };
-    </script>
+    <script>tailwind.config={darkMode:'media'};</script>
 
     <!-- html5‑qrcode -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-
-    <!-- PWA meta (optional) -->
-    <meta name="theme-color" content="#0F172A" />
-    <style>
-        /* halvtransparent mask runt qrbox */
-        .qr-mask:before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            backdrop-filter: blur(1px);
-            background: rgba(0,0,0,.45);
-            mask:
-                    radial-gradient(transparent 0  , transparent 140px, #000 141px);
-            -webkit-mask:
-                    radial-gradient(transparent 0  , transparent 140px, #000 141px);
-        }
-    </style>
 </head>
-<body class="min-h-screen flex flex-col items-center bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 selection:bg-amber-300/50">
+<body class="min-h-screen flex flex-col items-center bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
 
 <header class="w-full max-w-xl py-6 text-center">
-    <h1 class="text-2xl font-bold tracking-tight md:text-3xl">Armada Lunch‑biljett Scanner</h1>
-    <p class="text-sm text-slate-500 dark:text-slate-400">Skanna QR‑koden på biljettbandet för att registrera besökaren</p>
+    <h1 class="text-2xl font-bold md:text-3xl">Armada Lunch‑biljett Scanner</h1>
+    <p class="text-sm text-slate-500 dark:text-slate-400">Rikta kameran mot QR‑koden</p>
 </header>
 
-<section id="setup" class="w-full max-w-md p-6 space-y-4 bg-white dark:bg-slate-800 rounded-2xl shadow-lg" aria-label="Registrera funktionär">
+<!-- Steg 1: namn -->
+<section id="setup" class="w-full max-w-md p-6 space-y-4 bg-white dark:bg-slate-800 rounded-2xl shadow-lg">
     <h2 class="text-lg font-medium">Vem skannar?</h2>
     <div class="flex gap-2">
-        <input id="nameInput" type="text" placeholder="Ditt namn" class="flex-1 rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500" />
-        <button id="saveNameBtn" class="rounded-xl bg-amber-500 hover:bg-amber-600 text-white px-5 py-3 font-semibold transition active:scale-95">Spara</button>
+        <input id="nameInput" class="flex-1 rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-3 focus:ring-2 focus:ring-amber-500" placeholder="Ditt namn" />
+        <button id="saveNameBtn" class="rounded-xl bg-amber-500 hover:bg-amber-600 text-white px-5 py-3 font-semibold">Spara</button>
     </div>
-    <p class="text-xs text-slate-500 dark:text-slate-400">Namnet visas i arket så att vi vet vem som skannade biljetten.</p>
 </section>
 
-<section id="scanner" class="w-full max-w-md hidden flex-col items-center">
-    <!-- Camera container with overlay -->
+<!-- Steg 2: scanner -->
+<section id="scanner" class="hidden w-full max-w-md flex-col items-center">
     <div class="relative mx-auto mt-6">
         <div id="reader" class="rounded-2xl overflow-hidden shadow-md"></div>
-        <!-- guidance box overlay -->
         <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div class="w-[300px] h-[300px] rounded-lg border-4 border-amber-400"></div>
         </div>
     </div>
 
-    <!-- Status card -->
     <div id="statusCard" class="w-full mt-4 p-4 rounded-2xl bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center gap-3">
         <svg id="statusIcon" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 shrink-0 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"></svg>
-        <span id="statusText" class="text-sm font-medium">Kamera laddas …</span>
-    </div>
-
-    <div class="mt-4 flex gap-3">
-        <button id="pauseBtn" class="hidden rounded-xl bg-slate-200 dark:bg-slate-600 text-slate-800 dark:text-slate-100 px-4 py-2 text-sm font-semibold">⏸︎ Pausa</button>
-        <button id="resumeBtn" class="hidden rounded-xl bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 text-sm font-semibold">▶️ Fortsätt</button>
-        <button id="changeCamBtn" class="hidden rounded-xl bg-slate-200 dark:bg-slate-600 text-slate-800 dark:text-slate-100 px-4 py-2 text-sm font-semibold">🔄 Byt kamera</button>
+        <span id="statusText" class="text-sm font-medium">Kamera laddas …</span>
     </div>
 </section>
 
 <footer class="mt-auto py-6 text-center text-xs text-slate-400">THS Armada © <span id="year"></span></footer>
-
 <audio id="beep" src="data:audio/webm;base64,GkXfo0AgQoaBAULj…" preload="auto"></audio>
 
 <script>
-    const WEBAPP_URL = "https://script.google.com/macros/s/XXXXXXXX/exec"; // TODO
-    const SCAN_COOLDOWN_MS = 1500;
-    const QRBOX_SIZE = 300;
+    const WEBAPP_URL = "https://script.google.com/macros/s/XXXXXXXX/exec"; // BYT
+    const SCAN_COOLDOWN = 50; // ms tills kameran återstartas
 
-    const setup   = document.getElementById('setup');
-    const nameInp = document.getElementById('nameInput');
-    const saveBtn = document.getElementById('saveNameBtn');
-    const scannerSec = document.getElementById('scanner');
-    const statusTxt = document.getElementById('statusText');
-    const statusIcon= document.getElementById('statusIcon');
-    const pauseBtn  = document.getElementById('pauseBtn');
-    const resumeBtn = document.getElementById('resumeBtn');
-    const changeCamBtn = document.getElementById('changeCamBtn');
-    const beep = document.getElementById('beep');
+    const els = {
+        setup:      document.getElementById('setup'),
+        nameInput:  document.getElementById('nameInput'),
+        saveBtn:    document.getElementById('saveNameBtn'),
+        scannerSec: document.getElementById('scanner'),
+        statusTxt:  document.getElementById('statusText'),
+        statusIcon: document.getElementById('statusIcon'),
+        statusCard: document.getElementById('statusCard'),
+        beep:       document.getElementById('beep'),
+    };
 
-    let qr, lastScan = 0, currentCameraId = null;
+    let qr;
 
-    function setStatus({msg, ok, warn=false}) {
-        statusTxt.textContent = msg;
-        const card = document.getElementById('statusCard');
-        card.classList.remove('ring-2','ring-green-500','ring-red-500','ring-yellow-400');
-        statusIcon.classList.remove('hidden');
-        if (ok === true) {
-            card.classList.add('ring-2','ring-green-500');
-            statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />';
-            beep.currentTime = 0; beep.play().catch(()=>{});
-        } else if (warn) {
-            card.classList.add('ring-2','ring-yellow-400');
-            statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />';
-        } else {
-            card.classList.add('ring-2','ring-red-500');
-            statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />';
+    /* ---------- status helper ---------- */
+    function setStatus(type, msg) {
+        const c = els.statusCard.classList;
+        c.remove('ring-2','ring-green-500','ring-red-500','ring-yellow-400');
+        els.statusIcon.classList.remove('hidden');
+
+        if (type==='success') {
+            c.add('ring-2','ring-green-500');
+            els.statusIcon.innerHTML='<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />';
+            els.beep.currentTime=0; els.beep.play().catch(()=>{});
+        } else if (type==='error') {
+            c.add('ring-2','ring-red-500');
+            els.statusIcon.innerHTML='<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />';
+        } else { // waiting
+            c.add('ring-2','ring-yellow-400');
+            els.statusIcon.innerHTML='<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />';
         }
+        els.statusTxt.textContent = msg;
     }
 
-    function initScanner() {
-        scannerSec.classList.remove('hidden');
-        qr = new Html5Qrcode('reader', { verbose: false });
-        Html5Qrcode.getCameras().then(cameras => {
-            if (cameras.length) {
-                currentCameraId = cameras[0].id;
-                changeCamBtn.classList.toggle('hidden', cameras.length < 2);
-                startQr(currentCameraId);
-            } else setStatus({msg:'Ingen kamera hittades', ok:false});
-        }).catch(err=>setStatus({msg:'Kamerafelkod: '+err, ok:false}));
+    /* ---------- scanner init ---------- */
+    function initScanner(){
+        els.scannerSec.classList.remove('hidden');
+        qr = new Html5Qrcode('reader', { verbose:false });
+        Html5Qrcode.getCameras().then(cams=>{
+            const camId = cams[0]?.id;
+            qr.start({ deviceId:{exact:camId}}, { fps:15, qrbox:300, disableFlip:true }, onScan)
+                .then(()=> setStatus('waiting','Kamera redo – rikta mot QR'))
+                .catch(e=> setStatus('error','Startfel: '+e));
+        });
     }
 
-    function startQr(camId){
-        const config = {
-            fps: 15,
-            qrbox: { width: QRBOX_SIZE, height: QRBOX_SIZE },
-            aspectRatio: 1,
-            disableFlip: true,
-            experimentalFeatures: { useBarCodeDetectorIfSupported: true }
-        };
-        qr.start({ deviceId:{ exact: camId } }, config, onScanSuccess, err=>console.debug(err))
-            .then(()=>{
-                setStatus({msg:'Kamera redo – rikta mot QR', ok:true, warn:true});
-                pauseBtn.classList.remove('hidden');
-            }).catch(e=>setStatus({msg:'Startfel: '+e, ok:false}));
-    }
+    /* ---------- scan callback ---------- */
+    async function onScan(text){
+        // pausa kamera direkt så vi inte får flera triggers
+        await qr.pause();
+        setStatus('waiting','Waiting for response…');
 
-    async function onScanSuccess(text){
-        const now = Date.now(); if(now - lastScan < SCAN_COOLDOWN_MS) return; lastScan = now;
         try{
             const scannerName = encodeURIComponent(localStorage.getItem('scannerName')||'');
-            const url = new URL(text); url.searchParams.set('scanner', scannerName);
-            const res = await fetch(url); const body = await res.text();
-            setStatus({msg: body, ok: res.ok && body.includes('ok\":true')});
-        }catch(err){ setStatus({msg:'Nätverksfel: '+err, ok:false}); }
+            const url = new URL(text);
+            url.searchParams.set('scanner', scannerName);
+
+            const res  = await fetch(url, { mode:'cors', credentials:'omit' });
+            const data = await res.json();
+            setStatus(data.ok ? 'success':'error', data.msg || 'Ok');
+        }catch(err){
+            setStatus('error','Network/JSON‑fel');
+        }
+
+        // återstarta kameran efter kort timeout
+        setTimeout(()=>qr.resume(), SCAN_COOLDOWN);
     }
 
-    saveBtn.addEventListener('click', ()=>{
-        const n = nameInp.value.trim(); if(!n) return nameInp.focus();
-        localStorage.setItem('scannerName', n);
-        setup.classList.add('hidden');
+    /* ---------- UI events ---------- */
+    els.saveBtn.addEventListener('click',()=>{
+        const name = els.nameInput.value.trim();
+        if(!name) return els.nameInput.focus();
+        localStorage.setItem('scannerName', name);
+        els.setup.classList.add('hidden');
         initScanner();
     });
 
-    pauseBtn.addEventListener('click', ()=>{ qr.pause().then(()=>{pauseBtn.classList.add('hidden'); resumeBtn.classList.remove('hidden');});});
-    resumeBtn.addEventListener('click', ()=>{ qr.resume(); resumeBtn.classList.add('hidden'); pauseBtn.classList.remove('hidden'); });
-    changeCamBtn.addEventListener('click', ()=>{ qr.stop().then(()=>{ Html5Qrcode.getCameras().then(cams=>{ if(cams.length<2) return; const idx=cams.findIndex(c=>c.id===currentCameraId); currentCameraId = cams[(idx+1)%cams.length].id; startQr(currentCameraId); });});});
-
-    document.addEventListener('DOMContentLoaded', ()=>{
-        const stored = localStorage.getItem('scannerName');
-        if(stored){ setup.classList.add('hidden'); initScanner(); } else nameInp.focus();
+    document.addEventListener('DOMContentLoaded',()=>{
+        if(localStorage.getItem('scannerName')){
+            els.setup.classList.add('hidden');
+            initScanner();
+        }
         document.getElementById('year').textContent = new Date().getFullYear();
     });
 </script>
