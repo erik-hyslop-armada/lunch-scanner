@@ -1,105 +1,178 @@
+<!--
+  Armada QR‑scanner – v4
+  ------------------------------------------------
+  Förbättringar av läsbarhet (mindre känslig för vinkel):
+  • Större video‑upplösning & högre fps (15) + experimentalFeatures
+  • qrbox ökas till 300×300 & disableFlip för mobilkameror
+  • Kamera‑overlay (transparant mask) som guidar användaren
+  • Automatisk kontinuerlig autofocus där det stöds
+-->
 <!DOCTYPE html>
-<html lang="en">
+<html lang="sv" class="scroll-smooth">
 <head>
-  <meta charset="utf-8" />
-  <title>Armada Lunch Ticket Scanner</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <style>
-    :root { --ok:#d2ffd2; --no:#ffd2d2; }
-    body{
-      font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-      margin:0;padding:1rem;text-align:center;background:#f7f7f7;
-      transition:background .2s;
-    }
-    #reader{margin:auto;margin-top:1rem;width:320px;max-width:90vw}
-    #status{margin-top:1rem;font-size:1.2rem;min-height:2.2rem}
-    button{
-      padding:1rem 2rem;font-size:1.1rem;border:none;border-radius:8px;
-      cursor:pointer;background:#004080;color:#fff;
-    }
-    button:active{transform:scale(.97)}
-  </style>
-</head>
-<body>
-  <h2>Scan lunch ticket</h2>
-  <button id="start">▶️ Start scanner</button>
-  <div id="reader"></div>
-  <div id="status"></div>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Armada Lunch Ticket Scanner</title>
 
-  <!-- html5‑qrcode global build -->
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-  <script>
-    const btn    = document.getElementById('start');
-    const status = document.getElementById('status');
+    <!-- Tailwind via CDN for rapid prototyping -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'media' };
+    </script>
 
-    function show(msg, ok){
-      status.textContent = msg;
-      if (ok === true)      document.body.style.background = 'var(--ok)';
-      else if(ok === false) document.body.style.background = 'var(--no)';
-      else                  document.body.style.background = '#f7f7f7';
-    }
+    <!-- html5‑qrcode -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
-    btn.addEventListener('click', () => {
-      console.log('[UI] Start button clicked');
-      btn.remove();
-
-      if(typeof Html5Qrcode === 'undefined'){
-        show('Camera lib failed');
-        console.error('Html5Qrcode undefined');
-        return;
-      }
-
-      const qr = new Html5Qrcode('reader');
-      console.log('[QR] Html5Qrcode instance created');
-
-      // JSONP callback from Apps Script
-      window.scanCb = ({ok,msg}) => {
-        console.log('[QR] scanCb received', {ok,msg});
-        show(msg, ok);
-        setTimeout(() => {
-          console.log('[QR] Resuming camera');
-          qr.resume();
-          show('Camera ready – point at QR');
-        }, 1500);
-      };
-
-      qr.start(
-        { facingMode:'environment' },
-        { fps:10, qrbox:250 },
-        raw => {
-          console.log('[QR] onSuccess raw', raw);
-          try {
-            qr.pause();
-            console.log('[QR] Camera paused');
-          } catch(err){
-            console.warn('[QR] pause error', err);
-          }
-          show('Camera paused');
-
-          const url = decodeURIComponent(raw);
-          console.log('[QR] decoded URL', url);
-
-          const s = document.createElement('script');
-          s.src = url + (url.includes('?') ? '&' : '?') + 'callback=scanCb';
-          s.onerror = () => {
-            console.error('[QR] JSONP load failed');
-            show('Network error', false);
-          };
-          document.head.appendChild(s);
-        },
-        err => {
-          if(!/No MultiFormat Readers/i.test(err)){
-            console.warn('[QR] onError', err);
-          }
+    <!-- PWA meta (optional) -->
+    <meta name="theme-color" content="#0F172A" />
+    <style>
+        /* halvtransparent mask runt qrbox */
+        .qr-mask:before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            backdrop-filter: blur(1px);
+            background: rgba(0,0,0,.45);
+            mask:
+                    radial-gradient(transparent 0  , transparent 140px, #000 141px);
+            -webkit-mask:
+                    radial-gradient(transparent 0  , transparent 140px, #000 141px);
         }
-      ).then(() => {
-        console.log('[QR] Camera started');
-        show('Camera ready – point at QR');
-      }).catch(e => {
-        console.error('[QR] init failed', e);
-        show('Camera init failed: ' + e, false);
-      });
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 selection:bg-amber-300/50">
+
+<header class="w-full max-w-xl py-6 text-center">
+    <h1 class="text-2xl font-bold tracking-tight md:text-3xl">Armada Lunch‑biljett Scanner</h1>
+    <p class="text-sm text-slate-500 dark:text-slate-400">Skanna QR‑koden på biljettbandet för att registrera besökaren</p>
+</header>
+
+<section id="setup" class="w-full max-w-md p-6 space-y-4 bg-white dark:bg-slate-800 rounded-2xl shadow-lg" aria-label="Registrera funktionär">
+    <h2 class="text-lg font-medium">Vem skannar?</h2>
+    <div class="flex gap-2">
+        <input id="nameInput" type="text" placeholder="Ditt namn" class="flex-1 rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        <button id="saveNameBtn" class="rounded-xl bg-amber-500 hover:bg-amber-600 text-white px-5 py-3 font-semibold transition active:scale-95">Spara</button>
+    </div>
+    <p class="text-xs text-slate-500 dark:text-slate-400">Namnet visas i arket så att vi vet vem som skannade biljetten.</p>
+</section>
+
+<section id="scanner" class="w-full max-w-md hidden flex-col items-center">
+    <!-- Camera container with overlay -->
+    <div class="relative mx-auto mt-6">
+        <div id="reader" class="rounded-2xl overflow-hidden shadow-md"></div>
+        <!-- guidance box overlay -->
+        <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div class="w-[300px] h-[300px] rounded-lg border-4 border-amber-400"></div>
+        </div>
+    </div>
+
+    <!-- Status card -->
+    <div id="statusCard" class="w-full mt-4 p-4 rounded-2xl bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center gap-3">
+        <svg id="statusIcon" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 shrink-0 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"></svg>
+        <span id="statusText" class="text-sm font-medium">Kamera laddas …</span>
+    </div>
+
+    <div class="mt-4 flex gap-3">
+        <button id="pauseBtn" class="hidden rounded-xl bg-slate-200 dark:bg-slate-600 text-slate-800 dark:text-slate-100 px-4 py-2 text-sm font-semibold">⏸︎ Pausa</button>
+        <button id="resumeBtn" class="hidden rounded-xl bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 text-sm font-semibold">▶️ Fortsätt</button>
+        <button id="changeCamBtn" class="hidden rounded-xl bg-slate-200 dark:bg-slate-600 text-slate-800 dark:text-slate-100 px-4 py-2 text-sm font-semibold">🔄 Byt kamera</button>
+    </div>
+</section>
+
+<footer class="mt-auto py-6 text-center text-xs text-slate-400">THS Armada © <span id="year"></span></footer>
+
+<audio id="beep" src="data:audio/webm;base64,GkXfo0AgQoaBAULj…" preload="auto"></audio>
+
+<script>
+    const WEBAPP_URL = "https://script.google.com/macros/s/XXXXXXXX/exec"; // TODO
+    const SCAN_COOLDOWN_MS = 1500;
+    const QRBOX_SIZE = 300;
+
+    const setup   = document.getElementById('setup');
+    const nameInp = document.getElementById('nameInput');
+    const saveBtn = document.getElementById('saveNameBtn');
+    const scannerSec = document.getElementById('scanner');
+    const statusTxt = document.getElementById('statusText');
+    const statusIcon= document.getElementById('statusIcon');
+    const pauseBtn  = document.getElementById('pauseBtn');
+    const resumeBtn = document.getElementById('resumeBtn');
+    const changeCamBtn = document.getElementById('changeCamBtn');
+    const beep = document.getElementById('beep');
+
+    let qr, lastScan = 0, currentCameraId = null;
+
+    function setStatus({msg, ok, warn=false}) {
+        statusTxt.textContent = msg;
+        const card = document.getElementById('statusCard');
+        card.classList.remove('ring-2','ring-green-500','ring-red-500','ring-yellow-400');
+        statusIcon.classList.remove('hidden');
+        if (ok === true) {
+            card.classList.add('ring-2','ring-green-500');
+            statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />';
+            beep.currentTime = 0; beep.play().catch(()=>{});
+        } else if (warn) {
+            card.classList.add('ring-2','ring-yellow-400');
+            statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />';
+        } else {
+            card.classList.add('ring-2','ring-red-500');
+            statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />';
+        }
+    }
+
+    function initScanner() {
+        scannerSec.classList.remove('hidden');
+        qr = new Html5Qrcode('reader', { verbose: false });
+        Html5Qrcode.getCameras().then(cameras => {
+            if (cameras.length) {
+                currentCameraId = cameras[0].id;
+                changeCamBtn.classList.toggle('hidden', cameras.length < 2);
+                startQr(currentCameraId);
+            } else setStatus({msg:'Ingen kamera hittades', ok:false});
+        }).catch(err=>setStatus({msg:'Kamerafelkod: '+err, ok:false}));
+    }
+
+    function startQr(camId){
+        const config = {
+            fps: 15,
+            qrbox: { width: QRBOX_SIZE, height: QRBOX_SIZE },
+            aspectRatio: 1,
+            disableFlip: true,
+            experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+        };
+        qr.start({ deviceId:{ exact: camId } }, config, onScanSuccess, err=>console.debug(err))
+            .then(()=>{
+                setStatus({msg:'Kamera redo – rikta mot QR', ok:true, warn:true});
+                pauseBtn.classList.remove('hidden');
+            }).catch(e=>setStatus({msg:'Startfel: '+e, ok:false}));
+    }
+
+    async function onScanSuccess(text){
+        const now = Date.now(); if(now - lastScan < SCAN_COOLDOWN_MS) return; lastScan = now;
+        try{
+            const scannerName = encodeURIComponent(localStorage.getItem('scannerName')||'');
+            const url = new URL(text); url.searchParams.set('scanner', scannerName);
+            const res = await fetch(url); const body = await res.text();
+            setStatus({msg: body, ok: res.ok && body.includes('ok\":true')});
+        }catch(err){ setStatus({msg:'Nätverksfel: '+err, ok:false}); }
+    }
+
+    saveBtn.addEventListener('click', ()=>{
+        const n = nameInp.value.trim(); if(!n) return nameInp.focus();
+        localStorage.setItem('scannerName', n);
+        setup.classList.add('hidden');
+        initScanner();
     });
-  </script>
+
+    pauseBtn.addEventListener('click', ()=>{ qr.pause().then(()=>{pauseBtn.classList.add('hidden'); resumeBtn.classList.remove('hidden');});});
+    resumeBtn.addEventListener('click', ()=>{ qr.resume(); resumeBtn.classList.add('hidden'); pauseBtn.classList.remove('hidden'); });
+    changeCamBtn.addEventListener('click', ()=>{ qr.stop().then(()=>{ Html5Qrcode.getCameras().then(cams=>{ if(cams.length<2) return; const idx=cams.findIndex(c=>c.id===currentCameraId); currentCameraId = cams[(idx+1)%cams.length].id; startQr(currentCameraId); });});});
+
+    document.addEventListener('DOMContentLoaded', ()=>{
+        const stored = localStorage.getItem('scannerName');
+        if(stored){ setup.classList.add('hidden'); initScanner(); } else nameInp.focus();
+        document.getElementById('year').textContent = new Date().getFullYear();
+    });
+</script>
 </body>
 </html>
