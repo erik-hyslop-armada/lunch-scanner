@@ -140,36 +140,40 @@
         return new Promise((resolve, reject) => {
             const cb = 'cb_' + Math.random().toString(36).slice(2);
             const s  = document.createElement('script');
-            let done = false;
+            let settled = false;
+
+            window[cb] = (data) => {
+                if (settled) return;      // ignorerar sena svar
+                settled = true;
+                cleanup();
+                resolve(data);
+            };
 
             const timer = setTimeout(() => {
-                if (done) return;
-                done = true; cleanup();
+                if (settled) return;
+                settled = true;
+                if (s && s.parentNode) s.parentNode.removeChild(s);
                 reject(new Error('Timeout'));
             }, timeoutMs);
 
             function cleanup() {
                 clearTimeout(timer);
-                try { delete window[cb]; } catch {}
+                setTimeout(() => { delete window[cb]; }, 5000); // ta bort callback lite senare, säkert
                 if (s && s.parentNode) s.parentNode.removeChild(s);
             }
-
-            window[cb] = (data) => {
-                if (done) return;
-                done = true; cleanup();
-                resolve(data);
-            };
 
             s.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + encodeURIComponent(cb);
             s.async = true;
             s.onerror = () => {
-                if (done) return;
-                done = true; cleanup();
+                if (settled) return;
+                settled = true;
+                cleanup();
                 reject(new Error('Network error'));
             };
             document.head.appendChild(s);
         });
     }
+
 
     /* ===================== Initiera scanner ===================== */
     async function initScanner() {
