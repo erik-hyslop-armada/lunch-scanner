@@ -1,41 +1,46 @@
 <!--
-  Armada QR‑scanner – v8  (silencer)
-  ------------------------------------------------
-  • Stoppar html5‑qrcode från att spamma decode‑fel i konsolen
-  • Robust fetch: försöker .json(), fall‑back till .text() → JSON.parse
-  • Kortare återupptagnings‑delay (400 ms)
+  Armada QR-scanner – token-only + JSONP  (2025-11-07)
+  ----------------------------------------------------
+  • Skannar QR → extraherar endast token (t eller token eller ren sträng)
+  • Anropar alltid Google Apps Script som JSONP (CORS-fritt)
+  • Dedup + timeout + robust status
+  • Föredrar bakre kamera, fall-back till första kamera
+  • Tillgänglighet: aria-live/role och label
 -->
 <!DOCTYPE html>
 <html lang="sv" class="scroll-smooth">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Armada Lunch Ticket Scanner</title>
+    <title>Armada Lunch Ticket Scanner</title>
 
     <!-- Tailwind CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>tailwind.config={darkMode:'media'};</script>
+    <script>
+        tailwind.config = { darkMode: 'media' };
+    </script>
 
-    <!-- html5‑qrcode -->
+    <!-- html5-qrcode -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body class="min-h-screen flex flex-col items-center bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
 
 <header class="w-full max-w-xl py-6 text-center">
-    <h1 class="text-2xl font-bold md:text-3xl">Armada Lunch‑biljett Scanner</h1>
-    <p class="text-sm text-slate-500 dark:text-slate-400">Rikta kameran mot QR‑koden</p>
+    <h1 class="text-2xl font-bold md:text-3xl">Armada Lunch-biljett Scanner</h1>
+    <p class="text-sm text-slate-500 dark:text-slate-400">Rikta kameran mot QR-koden</p>
 </header>
 
-<!-- Steg 1: namn -->
+<!-- Steg 1: namn -->
 <section id="setup" class="w-full max-w-md p-6 space-y-4 bg-white dark:bg-slate-800 rounded-2xl shadow-lg">
     <h2 class="text-lg font-medium">Vem skannar?</h2>
     <div class="flex gap-2">
+        <label class="sr-only" for="nameInput">Ditt namn</label>
         <input id="nameInput" class="flex-1 rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-3 focus:ring-2 focus:ring-amber-500" placeholder="Ditt namn" />
         <button id="saveNameBtn" class="rounded-xl bg-amber-500 hover:bg-amber-600 text-white px-5 py-3 font-semibold">Spara</button>
     </div>
 </section>
 
-<!-- Steg 2: scanner -->
+<!-- Steg 2: scanner -->
 <section id="scanner" class="hidden w-full max-w-md flex-col items-center">
     <div class="relative mx-auto mt-6">
         <div id="reader" class="rounded-2xl overflow-hidden shadow-md"></div>
@@ -44,19 +49,27 @@
         </div>
     </div>
 
-    <div id="statusCard" class="w-full mt-4 p-4 rounded-2xl bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center gap-3">
+    <div id="statusCard" role="status" aria-live="polite" class="w-full mt-4 p-4 rounded-2xl bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center gap-3">
         <svg id="statusIcon" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 shrink-0 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"></svg>
-        <span id="statusText" class="text-sm font-medium">Kamera laddas …</span>
+        <span id="statusText" class="text-sm font-medium">Kamera laddas…</span>
     </div>
 </section>
 
 <footer class="mt-auto py-6 text-center text-xs text-slate-400">THS Armada © <span id="year"></span></footer>
-<audio id="beep" src="data:audio/webm;base64,GkXfo0AgQoaBAULj…" preload="auto"></audio>
+
+<!-- Beep – flera format för bred kompatibilitet -->
+<audio id="beep" preload="auto">
+    <source src="beep.wav" type="audio/wav">
+    <source src="beep.m4a" type="audio/mp4">
+</audio>
 
 <script>
-    const WEBAPP_URL     = "https://script.google.com/macros/s/XXXXXXXX/exec"; // BYT
-    const RESUME_DELAY   = 400;   // ms tills kameran återstartas
+    /* ===================== Konfiguration ===================== */
+    const WEBAPP_URL   = "https://script.google.com/macros/s/AKfycbw2TSX8ID4bfLeni0Sj2TvZFjRYUNFsDmMic1JFai9FuuEaF5aCzWKMBU0eCQrniLfvvw/exec"; // BYT till din Apps Script Web App
+    const RESUME_DELAY = 400;  // ms tills kameran återstartas
+    const JSONP_TIMEOUT_MS = 6000;
 
+    /* ===================== Elementreferenser ===================== */
     const els = {
         setup:      document.getElementById('setup'),
         nameInput:  document.getElementById('nameInput'),
@@ -66,72 +79,184 @@
         statusIcon: document.getElementById('statusIcon'),
         statusCard: document.getElementById('statusCard'),
         beep:       document.getElementById('beep'),
+        year:       document.getElementById('year'),
     };
 
-    let qr;
+    let qr;              // Html5Qrcode instans
+    let lastToken = null;
+    let inFlight  = false;
 
-    /* ---------- status helper ---------- */
-    function setStatus(type,msg){
-        const c=els.statusCard.classList;
-        c.remove('ring-2','ring-green-500','ring-red-500','ring-yellow-400');
+    /* ===================== Statushjälpare ===================== */
+    function setStatus(type, msg) {
+        const c = els.statusCard.classList;
+        c.remove('ring-2', 'ring-green-500', 'ring-red-500', 'ring-yellow-400');
         els.statusIcon.classList.remove('hidden');
-        if(type==='success'){c.add('ring-2','ring-green-500');els.statusIcon.innerHTML='<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />';els.beep.currentTime=0;els.beep.play().catch(()=>{});}
-        else if(type==='error'){c.add('ring-2','ring-red-500');els.statusIcon.innerHTML='<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />';}
-        else{c.add('ring-2','ring-yellow-400');els.statusIcon.innerHTML='<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />';}
-        els.statusTxt.textContent=msg;
+
+        if (type === 'success') {
+            c.add('ring-2', 'ring-green-500');
+            els.statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />';
+            try { els.beep.currentTime = 0; els.beep.play().catch(() => {}); } catch {}
+        } else if (type === 'error') {
+            c.add('ring-2', 'ring-red-500');
+            els.statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />';
+        } else {
+            c.add('ring-2', 'ring-yellow-400');
+            els.statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />';
+        }
+        els.statusTxt.textContent = msg;
     }
 
-    /* ---------- init scanner ---------- */
-    function initScanner(){
-        els.scannerSec.classList.remove('hidden');
-        qr=new Html5Qrcode('reader',{verbose:false});
-        Html5Qrcode.getCameras().then(cams=>{
-            const camId=cams[0]?.id;
-            const cfg={fps:15,qrbox:300,disableFlip:true};
-            qr.start({deviceId:{exact:camId}},cfg,onScan,()=>{/* swallow decode errors*/});
-        }).catch(e=>setStatus('error','Kamerafelkod: '+e));
+    /* ===================== Token-extraktion ===================== */
+    // Tillåt: ren token, eller "...?t=TOKEN" / "...?token=TOKEN"
+    function extractToken(qrText) {
+        const paramMatch = qrText.match(/(?:^|[?&#])(t|token)=([^&#]+)/i);
+        const raw = paramMatch ? decodeURIComponent(paramMatch[2]) : qrText.trim();
+        // Validera enkel vitlista (justera längdkrav efter dina tokens)
+        if (!/^[A-Za-z0-9_-]{6,128}$/.test(raw)) throw new Error('Ogiltig token.');
+        return raw; // ev. .toUpperCase() om du vill vara case-insensitive
     }
 
-    /* ---------- onScan ---------- */
-    async function onScan(text){
-        await qr.pause();
-        setStatus('waiting','Waiting for response…');
+    /* ===================== JSONP-klient (CORS-fritt) ===================== */
+    function jsonp(url, timeoutMs = JSONP_TIMEOUT_MS) {
+        return new Promise((resolve, reject) => {
+            const cb = 'cb_' + Math.random().toString(36).slice(2);
+            const s  = document.createElement('script');
+            let done = false;
 
-        try{
-            const scannerName=encodeURIComponent(localStorage.getItem('scannerName')||'');
-            const url=new URL(text);
-            url.searchParams.set('scanner',scannerName);
-            const res=await fetch(url,{mode:'cors',credentials:'omit'});
-            let data;
-            if(res.headers.get('content-type')?.includes('application/json')){
-                data=await res.json();
-            }else{
-                const t=await res.text();
-                data=JSON.parse(t);
+            const timer = setTimeout(() => {
+                if (done) return;
+                done = true;
+                cleanup();
+                reject(new Error('Timeout'));
+            }, timeoutMs);
+
+            function cleanup() {
+                clearTimeout(timer);
+                try { delete window[cb]; } catch {}
+                if (s && s.parentNode) s.parentNode.removeChild(s);
             }
-            setStatus(data.ok?'success':'error',data.msg||'Ok');
-        }catch(err){
-            setStatus('error','Network/JSON‑fel');
+
+            window[cb] = (data) => {
+                if (done) return;
+                done = true;
+                cleanup();
+                resolve(data);
+            };
+
+            s.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + encodeURIComponent(cb);
+            s.async = true;
+            s.onerror = () => {
+                if (done) return;
+                done = true;
+                cleanup();
+                reject(new Error('Network error'));
+            };
+            document.head.appendChild(s);
+        });
+    }
+
+    /* ===================== Initiera scanner ===================== */
+    async function initScanner() {
+        els.scannerSec.classList.remove('hidden');
+        setStatus('waiting', 'Initierar kamera…');
+
+        qr = new Html5Qrcode('reader', { verbose: false });
+
+        try {
+            // Försök välja bakre kamera
+            const cams = await Html5Qrcode.getCameras();
+            if (!cams || cams.length === 0) {
+                setStatus('error', 'Ingen kamera hittades.');
+                return;
+            }
+            const back = cams.find(c => /back|rear|environment/i.test(c.label)) || cams[0];
+            const cfg  = { fps: 15, qrbox: 300, disableFlip: true };
+
+            await qr.start({ deviceId: { exact: back.id } }, cfg, onScan, () => { /* svälj decode-fel */ });
+            setStatus('waiting', 'Klar – skanna en kod.');
+        } catch (e) {
+            // Fallback: försök med facingMode om deviceId misslyckas
+            try {
+                const cfg = { fps: 15, qrbox: 300, disableFlip: true };
+                await qr.start({ facingMode: 'environment' }, cfg, onScan, () => {});
+                setStatus('waiting', 'Klar – skanna en kod.');
+            } catch (err) {
+                setStatus('error', 'Kamerafelkod: ' + err);
+            }
+        }
+    }
+
+    /* ===================== onScan ===================== */
+    async function onScan(text) {
+        let token;
+        try {
+            token = extractToken(text);
+        } catch {
+            setStatus('error', 'Ogiltig QR-kod.');
+            return;
         }
 
-        setTimeout(()=>qr.resume(),RESUME_DELAY);
+        if (token === lastToken || inFlight) return;
+        lastToken = token;
+        inFlight  = true;
+
+        try { await qr.pause(); } catch {}
+
+        setStatus('waiting', 'Väntar på svar…');
+
+        try {
+            const scannerName = (localStorage.getItem('scannerName') || '').trim();
+            const url = new URL(WEBAPP_URL);
+            // Din server accepterar "token" (och kan även acceptera "t" om du lagt in det)
+            url.searchParams.set('token', token);
+            url.searchParams.set('scanner', scannerName);
+
+            const data = await jsonp(url.toString());
+            const ok   = !!data?.ok;
+            const msg  = data?.msg || (ok ? 'OK' : 'Fel');
+
+            setStatus(ok ? 'success' : 'error', msg);
+        } catch (err) {
+            if (err && err.message === 'Timeout') setStatus('error', 'Timeout – ingen kontakt med servern.');
+            else setStatus('error', 'Nätverks-/JSON-fel');
+        } finally {
+            setTimeout(() => {
+                inFlight = false;
+                try { qr.resume(); } catch {}
+            }, RESUME_DELAY);
+        }
     }
 
-    /* ---------- UI events ---------- */
-    els.saveBtn.addEventListener('click',()=>{
-        const name=els.nameInput.value.trim();
-        if(!name)return els.nameInput.focus();
-        localStorage.setItem('scannerName',name);
+    /* ===================== UI-händelser ===================== */
+    els.saveBtn.addEventListener('click', () => {
+        const name = els.nameInput.value.trim();
+        if (!name) return els.nameInput.focus();
+        localStorage.setItem('scannerName', name);
         els.setup.classList.add('hidden');
         initScanner();
     });
 
-    document.addEventListener('DOMContentLoaded',()=>{
-        if(localStorage.getItem('scannerName')){
+    document.addEventListener('DOMContentLoaded', () => {
+        els.year.textContent = new Date().getFullYear();
+
+        if (localStorage.getItem('scannerName')) {
             els.setup.classList.add('hidden');
             initScanner();
         }
-        document.getElementById('year').textContent=new Date().getFullYear();
+    });
+
+    // Pausa/resume när fliken döljs/visas
+    document.addEventListener('visibilitychange', () => {
+        if (!qr) return;
+        try {
+            if (document.hidden) qr.pause();
+            else qr.resume();
+        } catch {}
+    });
+
+    // Städa upp vid stängning
+    window.addEventListener('beforeunload', () => {
+        try { qr?.stop(); } catch {}
     });
 </script>
 </body>
