@@ -89,13 +89,14 @@
     };
 
     let qr;              // Html5Qrcode instans
-    let lastToken = null;
+    const DEDUP_WINDOW_MS = 1500; // hur länge vi betraktar samma token som ”nyligen hanterad”
+    let lastScan = { token: null, ts: 0 };
     let inFlight  = false;
 
     /* ===================== Statushjälpare ===================== */
     function setStatus(type, msg) {
         const c = els.statusCard.classList;
-        c.remove('ring-2', 'ring-green-500', 'ring-red-500', 'ring-yellow-400');
+        c.remove('ring-2', 'ring-green-500', 'ring-red-500', 'ring-yellow-400', 'ring-blue-500');
         els.statusIcon.classList.remove('hidden');
 
         // återställ pill
@@ -111,6 +112,11 @@
             els.statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />';
             els.statusPill.textContent = 'Fel';
             els.statusPill.classList.add('bg-red-100','text-red-800','dark:bg-red-900/40','dark:text-red-200','block');
+        } else if (type === 'repeat') {
+            c.add('ring-2', 'ring-blue-500');
+            els.statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v6h6M20 20v-6h-6M5 15a7 7 0 0012-4M19 9A7 7 0 007 13" />';
+            els.statusPill.textContent = 'Samma';
+            els.statusPill.classList.add('bg-blue-100','text-blue-800','dark:bg-blue-900/40','dark:text-blue-200','block');
         } else {
             c.add('ring-2', 'ring-yellow-400');
             els.statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />';
@@ -206,10 +212,17 @@
             return;
         }
 
-        if (token === lastToken || inFlight) return;
-        lastToken = token;
-        inFlight  = true;
+        // Om samma token skannats nyligen: kommunicera och hoppa över
+        const now = Date.now();
+        if (lastScan.token === token && (now - lastScan.ts) < DEDUP_WINDOW_MS) {
+            setStatus('repeat', 'Samma kod igen – nyligen hanterad.');
+            // uppdatera tidsstämpeln så att användaren kan ”pumpa” den och ändå få feedback
+            lastScan.ts = now;
+            return;
+        }
 
+        // Normal väg
+        inFlight = true;
         try { await qr.pause(); } catch {}
 
         setStatus('waiting', 'Väntar på svar…');
@@ -229,12 +242,15 @@
             if (err && err.message === 'Timeout') setStatus('error', 'Timeout – ingen kontakt med servern.');
             else setStatus('error', 'Nätverks-/JSON-fel');
         } finally {
+            // spara senaste token + tid oavsett utfallet
+            lastScan = { token, ts: Date.now() };
             setTimeout(() => {
                 inFlight = false;
                 try { qr.resume(); } catch {}
             }, RESUME_DELAY);
         }
     }
+
 
     /* ===================== UI-händelser ===================== */
     els.saveBtn.addEventListener('click', () => {
