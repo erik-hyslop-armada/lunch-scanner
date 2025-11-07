@@ -12,9 +12,7 @@
             darkMode: 'media',
             theme: {
                 extend: {
-                    boxShadow: {
-                        soft: '0 8px 30px rgba(2,6,23,0.06)'
-                    }
+                    boxShadow: { soft: '0 8px 30px rgba(2,6,23,0.06)' }
                 }
             }
         };
@@ -34,6 +32,7 @@
 </header>
 
 <main class="mx-auto w-full max-w-xl px-4 py-6">
+    <!-- Steg 1: namn -->
     <section id="setup" class="p-6 space-y-4 bg-white dark:bg-slate-800 rounded-2xl shadow-soft">
         <h2 class="text-lg font-medium">Vem skannar?</h2>
         <div class="flex gap-2">
@@ -62,6 +61,22 @@
             <span id="statusText" class="text-sm font-medium">Kamera laddas…</span>
             <span id="statusPill" class="ml-auto hidden rounded-full px-2.5 py-1 text-xs font-medium"></span>
         </div>
+
+        <!-- detaljer från API -->
+        <div id="ticketDetails" class="w-full mt-3 hidden">
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/70 p-4 text-sm">
+                <div class="flex flex-wrap gap-x-6 gap-y-2">
+                    <div><span class="text-slate-500">Företag: </span><span id="detCompany" class="font-medium"></span></div>
+                    <div><span class="text-slate-500">Dag: </span><span id="detDay" class="font-medium"></span></div>
+                    <div><span class="text-slate-500">Tid: </span><span id="detSlot" class="font-medium"></span></div>
+                    <div class="truncate"><span class="text-slate-500">Token: </span><span id="detToken" class="font-mono"></span></div>
+                </div>
+                <div id="metaRow" class="mt-2 hidden flex flex-wrap gap-x-6 gap-y-2">
+                    <div><span class="text-slate-500">Checked in: </span><span id="detCheckedAt" class="font-medium"></span></div>
+                    <div><span class="text-slate-500">Checked by: </span><span id="detCheckedBy" class="font-medium"></span></div>
+                </div>
+            </div>
+        </div>
     </section>
 </main>
 
@@ -86,44 +101,82 @@
         statusCard: document.getElementById('statusCard'),
         statusPill: document.getElementById('statusPill'),
         year:       document.getElementById('year'),
+        detWrap:    document.getElementById('ticketDetails'),
+        detCompany: document.getElementById('detCompany'),
+        detDay:     document.getElementById('detDay'),
+        detSlot:    document.getElementById('detSlot'),
+        detToken:   document.getElementById('detToken'),
+        metaRow:    document.getElementById('metaRow'),
+        detCheckedAt: document.getElementById('detCheckedAt'),
+        detCheckedBy: document.getElementById('detCheckedBy'),
     };
 
-    let qr;              // Html5Qrcode instans
-    const DEDUP_WINDOW_MS = 1500; // hur länge vi betraktar samma token som ”nyligen hanterad”
+    let qr; // Html5Qrcode instans
+    const DEDUP_WINDOW_MS = 1500;
     let lastScan = { token: null, ts: 0 };
-    let inFlight  = false;
 
     /* ===================== Statushjälpare ===================== */
     function setStatus(type, msg) {
         const c = els.statusCard.classList;
-        c.remove('ring-2', 'ring-green-500', 'ring-red-500', 'ring-yellow-400', 'ring-blue-500');
+        c.remove('ring-2','ring-green-500','ring-red-500','ring-yellow-400','ring-blue-500');
         els.statusIcon.classList.remove('hidden');
 
         // återställ pill
         els.statusPill.className = 'ml-auto hidden rounded-full px-2.5 py-1 text-xs font-medium';
 
         if (type === 'success') {
-            c.add('ring-2', 'ring-green-500');
+            c.add('ring-2','ring-green-500');
             els.statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />';
             els.statusPill.textContent = 'OK';
             els.statusPill.classList.add('bg-green-100','text-green-800','dark:bg-green-900/40','dark:text-green-200','block');
         } else if (type === 'error') {
-            c.add('ring-2', 'ring-red-500');
+            c.add('ring-2','ring-red-500');
             els.statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />';
             els.statusPill.textContent = 'Fel';
             els.statusPill.classList.add('bg-red-100','text-red-800','dark:bg-red-900/40','dark:text-red-200','block');
         } else if (type === 'repeat') {
-            c.add('ring-2', 'ring-blue-500');
+            c.add('ring-2','ring-blue-500');
             els.statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v6h6M20 20v-6h-6M5 15a7 7 0 0012-4M19 9A7 7 0 007 13" />';
             els.statusPill.textContent = 'Samma';
             els.statusPill.classList.add('bg-blue-100','text-blue-800','dark:bg-blue-900/40','dark:text-blue-200','block');
         } else {
-            c.add('ring-2', 'ring-yellow-400');
+            c.add('ring-2','ring-yellow-400');
             els.statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />';
             els.statusPill.textContent = 'Väntar';
             els.statusPill.classList.add('bg-amber-100','text-amber-800','dark:bg-amber-900/40','dark:text-amber-200','block');
         }
         els.statusTxt.textContent = msg;
+    }
+
+    /* ===================== Detalj-rendering ===================== */
+    function renderDetails(data) {
+        // Rensa/visa wrapper
+        els.detWrap.classList.remove('hidden');
+
+        const t = data?.ticket || {};
+        const m = data?.meta || {};
+
+        els.detCompany.textContent = t.company || '—';
+        els.detDay.textContent     = t.day != null ? String(t.day) : '—';
+        els.detSlot.textContent    = formatSlot(t.slot);
+        els.detToken.textContent   = t.token || '—';
+
+        if (m.checked_in_at || m.checked_by) {
+            els.metaRow.classList.remove('hidden');
+            els.detCheckedAt.textContent = m.checked_in_at || '—';
+            els.detCheckedBy.textContent = m.checked_by || '—';
+        } else {
+            els.metaRow.classList.add('hidden');
+            els.detCheckedAt.textContent = '';
+            els.detCheckedBy.textContent = '';
+        }
+    }
+
+    function formatSlot(slot) {
+        // backend kan skicka "11"/"12"/"13" eller 11/12/13
+        const s = String(slot || '').trim();
+        if (s === '11' || s === '12' || s === '13') return s + ':00';
+        return s || '—';
     }
 
     /* ===================== Token-extraktion ===================== */
@@ -143,7 +196,7 @@
             let settled = false;
 
             window[cb] = (data) => {
-                if (settled) return;      // ignorerar sena svar
+                if (settled) return;
                 settled = true;
                 cleanup();
                 resolve(data);
@@ -158,7 +211,7 @@
 
             function cleanup() {
                 clearTimeout(timer);
-                setTimeout(() => { delete window[cb]; }, 5000); // ta bort callback lite senare, säkert
+                setTimeout(() => { try { delete window[cb]; } catch {} }, 5000);
                 if (s && s.parentNode) s.parentNode.removeChild(s);
             }
 
@@ -174,7 +227,6 @@
         });
     }
 
-
     /* ===================== Initiera scanner ===================== */
     async function initScanner() {
         els.scannerSec.classList.remove('hidden');
@@ -183,7 +235,6 @@
         qr = new Html5Qrcode('reader', { verbose: false });
 
         try {
-            // Försök välja bakre kamera
             const cams = await Html5Qrcode.getCameras();
             if (!cams || cams.length === 0) {
                 setStatus('error', 'Ingen kamera hittades.');
@@ -192,10 +243,9 @@
             const back = cams.find(c => /back|rear|environment/i.test(c.label)) || cams[0];
             const cfg  = { fps: 15, qrbox: 300, disableFlip: true };
 
-            await qr.start({ deviceId: { exact: back.id } }, cfg, onScan, () => { /* svälj decode-fel */ });
+            await qr.start({ deviceId: { exact: back.id } }, cfg, onScan, () => {});
             setStatus('waiting', 'Klar – skanna en kod.');
         } catch (e) {
-            // Fallback: försök med facingMode om deviceId misslyckas
             try {
                 const cfg = { fps: 15, qrbox: 300, disableFlip: true };
                 await qr.start({ facingMode: 'environment' }, cfg, onScan, () => {});
@@ -213,22 +263,19 @@
             token = extractToken(text);
         } catch {
             setStatus('error', 'Ogiltig QR-kod.');
+            els.detWrap.classList.add('hidden');
             return;
         }
 
-        // Om samma token skannats nyligen: kommunicera och hoppa över
+        // Simple dedup för att kunna scanna samma fysiska kod igen med kort paus
         const now = Date.now();
         if (lastScan.token === token && (now - lastScan.ts) < DEDUP_WINDOW_MS) {
             setStatus('repeat', 'Samma kod igen – nyligen hanterad.');
-            // uppdatera tidsstämpeln så att användaren kan ”pumpa” den och ändå få feedback
             lastScan.ts = now;
             return;
         }
 
-        // Normal väg
-        inFlight = true;
         try { await qr.pause(); } catch {}
-
         setStatus('waiting', 'Väntar på svar…');
 
         try {
@@ -238,32 +285,42 @@
             url.searchParams.set('scanner', scannerName);
 
             const data = await jsonp(url.toString());
-            const ok   = !!data?.ok;
-            const msg  = data?.msg || (ok ? 'OK' : 'Fel');
 
-            setStatus(ok ? 'success' : 'error', msg);
+            if (data && typeof data === 'object') {
+                // Rendera detaljer oavsett ok/ej
+                renderDetails(data);
+
+                if (data.ok) {
+                    setStatus('success', data.msg || 'Checked in');
+                } else {
+                    // särskilj vanliga fel vs Already used
+                    const msg = data.msg || 'Fel';
+                    setStatus('error', msg);
+                }
+            } else {
+                els.detWrap.classList.add('hidden');
+                setStatus('error', 'Oväntat svar.');
+            }
         } catch (err) {
+            els.detWrap.classList.add('hidden');
             if (err && err.message === 'Timeout') setStatus('error', 'Timeout – ingen kontakt med servern.');
             else setStatus('error', 'Nätverks-/JSON-fel');
         } finally {
-            // spara senaste token + tid oavsett utfallet
             lastScan = { token, ts: Date.now() };
-            setTimeout(() => {
-                inFlight = false;
-                try { qr.resume(); } catch {}
-            }, RESUME_DELAY);
+            setTimeout(() => { try { qr.resume(); } catch {} }, RESUME_DELAY);
         }
     }
 
-
     /* ===================== UI-händelser ===================== */
-    els.saveBtn.addEventListener('click', () => {
+    const elsSave = () => {
         const name = els.nameInput.value.trim();
         if (!name) return els.nameInput.focus();
         localStorage.setItem('scannerName', name);
         els.setup.classList.add('hidden');
         initScanner();
-    });
+    };
+    els.saveBtn.addEventListener('click', elsSave);
+    els.nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') elsSave(); });
 
     document.addEventListener('DOMContentLoaded', () => {
         els.year.textContent = new Date().getFullYear();
@@ -276,16 +333,11 @@
     // Pausa/resume när fliken döljs/visas
     document.addEventListener('visibilitychange', () => {
         if (!qr) return;
-        try {
-            if (document.hidden) qr.pause();
-            else qr.resume();
-        } catch {}
+        try { if (document.hidden) qr.pause(); else qr.resume(); } catch {}
     });
 
     // Städa upp vid stängning
-    window.addEventListener('beforeunload', () => {
-        try { qr?.stop(); } catch {}
-    });
+    window.addEventListener('beforeunload', () => { try { qr?.stop(); } catch {} });
 </script>
 </body>
 </html>
