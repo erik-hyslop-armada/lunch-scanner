@@ -65,11 +65,18 @@
         <!-- detaljer från API -->
         <div id="ticketDetails" class="w-full mt-3 hidden">
             <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/70 p-4 text-sm">
-                <div class="flex flex-wrap gap-x-6 gap-y-2">
-                    <div><span class="text-slate-500">Företag: </span><span id="detCompany" class="font-medium"></span></div>
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <div class="flex items-center gap-2">
+                        <span class="text-slate-500">Företag: </span><span id="detCompany" class="font-medium"></span>
+                        <!-- SPECIAL-badge (visas bara om special=true) -->
+                        <span id="detSpecial" class="hidden rounded-full bg-rose-600/10 text-rose-700 dark:text-rose-200 dark:bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold tracking-wide">SPECIAL</span>
+                    </div>
                     <div><span class="text-slate-500">Dag: </span><span id="detDay" class="font-medium"></span></div>
                     <div><span class="text-slate-500">Tid: </span><span id="detSlot" class="font-medium"></span></div>
                     <div class="truncate"><span class="text-slate-500">Token: </span><span id="detToken" class="font-mono"></span></div>
+                </div>
+                <div id="specialNote" class="hidden mt-2 text-xs font-medium text-rose-700 dark:text-rose-300">
+                    Special – visa i kök
                 </div>
                 <div id="metaRow" class="mt-2 hidden flex flex-wrap gap-x-6 gap-y-2">
                     <div><span class="text-slate-500">Checked in: </span><span id="detCheckedAt" class="font-medium"></span></div>
@@ -106,6 +113,8 @@
         detDay:     document.getElementById('detDay'),
         detSlot:    document.getElementById('detSlot'),
         detToken:   document.getElementById('detToken'),
+        detSpecial: document.getElementById('detSpecial'),   // NEW
+        specialNote:document.getElementById('specialNote'),  // NEW
         metaRow:    document.getElementById('metaRow'),
         detCheckedAt: document.getElementById('detCheckedAt'),
         detCheckedBy: document.getElementById('detCheckedBy'),
@@ -160,6 +169,16 @@
         els.detDay.textContent     = t.day != null ? String(t.day) : '—';
         els.detSlot.textContent    = formatSlot(t.slot);
         els.detToken.textContent   = t.token || '—';
+
+        // NEW: visa/hide SPECIAL-badge + kort notis
+        const isSpecial = !!t.special;
+        if (isSpecial) {
+            els.detSpecial.classList.remove('hidden');
+            els.specialNote.classList.remove('hidden');
+        } else {
+            els.detSpecial.classList.add('hidden');
+            els.specialNote.classList.add('hidden');
+        }
 
         if (m.checked_in_at || m.checked_by) {
             els.metaRow.classList.remove('hidden');
