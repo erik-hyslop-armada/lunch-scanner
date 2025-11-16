@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Armada Lunch-biljett Scanner</title>
+    <title>Armada Lunch Ticket Scanner</title>
 
     <!-- Tailwind CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -26,21 +26,21 @@
 <!-- Header -->
 <header class="w-full border-b border-slate-200/70 dark:border-slate-700/50 bg-white/70 dark:bg-slate-900/50 backdrop-blur">
     <div class="mx-auto max-w-xl px-4 py-5">
-        <h1 class="text-2xl font-semibold tracking-tight md:text-3xl">Armada Lunch-biljett Scanner</h1>
-        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Rikta kameran mot QR-koden</p>
+        <h1 class="text-2xl font-semibold tracking-tight md:text-3xl">Armada Lunch Ticket Scanner</h1>
+        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Point the camera at the QR code</p>
     </div>
 </header>
 
 <main class="mx-auto w-full max-w-xl px-4 py-6">
     <!-- Steg 1: namn -->
     <section id="setup" class="p-6 space-y-4 bg-white dark:bg-slate-800 rounded-2xl shadow-soft">
-        <h2 class="text-lg font-medium">Vem skannar?</h2>
+        <h2 class="text-lg font-medium">Who is scanning?</h2>
         <div class="flex gap-2">
-            <label class="sr-only" for="nameInput">Ditt namn</label>
-            <input id="nameInput" class="flex-1 rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-3 focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-slate-900" placeholder="Ditt namn" />
-            <button id="saveNameBtn" class="rounded-xl bg-amber-500 hover:bg-amber-600 text-white px-5 py-3 font-semibold transition-colors">Spara</button>
+            <label class="sr-only" for="nameInput">Your name</label>
+            <input id="nameInput" class="flex-1 rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-3 focus:ring-2 focus:ring-amber-500 outline-none bg-white dark:bg-slate-900" placeholder="Your name" />
+            <button id="saveNameBtn" class="rounded-xl bg-amber-500 hover:bg-amber-600 text-white px-5 py-3 font-semibold transition-colors">Save</button>
         </div>
-        <p class="text-xs text-slate-500 dark:text-slate-400">Namnet loggas tillsammans med varje skanning.</p>
+        <p class="text-xs text-slate-500 dark:text-slate-400">Your name will be logged with each scan.</p>
     </section>
 
     <!-- Steg 2: scanner -->
@@ -58,7 +58,7 @@
         <div id="statusCard" role="status" aria-live="polite"
              class="w-full mt-4 p-4 rounded-2xl bg-slate-100 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 flex items-center gap-3">
             <svg id="statusIcon" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"></svg>
-            <span id="statusText" class="text-sm font-medium">Kamera laddas…</span>
+            <span id="statusText" class="text-sm font-medium">Camera loading…</span>
             <span id="statusPill" class="ml-auto hidden rounded-full px-2.5 py-1 text-xs font-medium"></span>
         </div>
 
@@ -67,16 +67,16 @@
             <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/70 p-4 text-sm">
                 <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
                     <div class="flex items-center gap-2">
-                        <span class="text-slate-500">Företag: </span><span id="detCompany" class="font-medium"></span>
+                        <span class="text-slate-500">Company: </span><span id="detCompany" class="font-medium"></span>
                         <!-- SPECIAL-badge (visas bara om special=true) -->
                         <span id="detSpecial" class="hidden rounded-full bg-rose-600/10 text-rose-700 dark:text-rose-200 dark:bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold tracking-wide">SPECIAL</span>
                     </div>
-                    <div><span class="text-slate-500">Dag: </span><span id="detDay" class="font-medium"></span></div>
-                    <div><span class="text-slate-500">Tid: </span><span id="detSlot" class="font-medium"></span></div>
+                    <div><span class="text-slate-500">Day: </span><span id="detDay" class="font-medium"></span></div>
+                    <div><span class="text-slate-500">Time: </span><span id="detSlot" class="font-medium"></span></div>
                     <div class="truncate"><span class="text-slate-500">Token: </span><span id="detToken" class="font-mono"></span></div>
                 </div>
                 <div id="specialNote" class="hidden mt-2 text-xs font-medium text-rose-700 dark:text-rose-300">
-                    Special – visa i kök
+                    Special – show in kitchen
                 </div>
                 <div id="metaRow" class="mt-2 hidden flex flex-wrap gap-x-6 gap-y-2">
                     <div><span class="text-slate-500">Checked in: </span><span id="detCheckedAt" class="font-medium"></span></div>
@@ -203,7 +203,7 @@
     function extractToken(qrText) {
         const paramMatch = qrText.match(/(?:^|[?&#])(t|token)=([^&#]+)/i);
         const raw = paramMatch ? decodeURIComponent(paramMatch[2]) : qrText.trim();
-        if (!/^[A-Za-z0-9_-]{6,128}$/.test(raw)) throw new Error('Ogiltig token.');
+        if (!/^[A-Za-z0-9_-]{6,128}$/.test(raw)) throw new Error('Invalid token.');
         return raw;
     }
 
@@ -249,28 +249,28 @@
     /* ===================== Initiera scanner ===================== */
     async function initScanner() {
         els.scannerSec.classList.remove('hidden');
-        setStatus('waiting', 'Initierar kamera…');
+        setStatus('waiting', 'Initiating camera…');
 
         qr = new Html5Qrcode('reader', { verbose: false });
 
         try {
             const cams = await Html5Qrcode.getCameras();
             if (!cams || cams.length === 0) {
-                setStatus('error', 'Ingen kamera hittades.');
+                setStatus('error', 'No camera found.');
                 return;
             }
             const back = cams.find(c => /back|rear|environment/i.test(c.label)) || cams[0];
             const cfg  = { fps: 15, qrbox: 300, disableFlip: true };
 
             await qr.start({ deviceId: { exact: back.id } }, cfg, onScan, () => {});
-            setStatus('waiting', 'Klar – skanna en kod.');
+            setStatus('waiting', 'Ready – scan a code.');
         } catch (e) {
             try {
                 const cfg = { fps: 15, qrbox: 300, disableFlip: true };
                 await qr.start({ facingMode: 'environment' }, cfg, onScan, () => {});
-                setStatus('waiting', 'Klar – skanna en kod.');
+                setStatus('waiting', 'Ready – scan a code.');
             } catch (err) {
-                setStatus('error', 'Kamerafelkod: ' + err);
+                setStatus('error', 'Camera error: ' + err);
             }
         }
     }
@@ -281,7 +281,7 @@
         try {
             token = extractToken(text);
         } catch {
-            setStatus('error', 'Ogiltig QR-kod.');
+            setStatus('error', 'Invalid QR-code.');
             els.detWrap.classList.add('hidden');
             return;
         }
@@ -295,7 +295,7 @@
         }
 
         try { await qr.pause(); } catch {}
-        setStatus('waiting', 'Väntar på svar…');
+        setStatus('waiting', 'Waiting on response…');
 
         try {
             const scannerName = (localStorage.getItem('scannerName') || '').trim();
@@ -318,12 +318,12 @@
                 }
             } else {
                 els.detWrap.classList.add('hidden');
-                setStatus('error', 'Oväntat svar.');
+                setStatus('error', 'Unexpected response.');
             }
         } catch (err) {
             els.detWrap.classList.add('hidden');
-            if (err && err.message === 'Timeout') setStatus('error', 'Timeout – ingen kontakt med servern.');
-            else setStatus('error', 'Nätverks-/JSON-fel');
+            if (err && err.message === 'Timeout') setStatus('error', 'Timeout, no contact with server.');
+            else setStatus('error', 'Network-/JSON-error');
         } finally {
             lastScan = { token, ts: Date.now() };
             setTimeout(() => { try { qr.resume(); } catch {} }, RESUME_DELAY);
